@@ -27,7 +27,16 @@ MAX_NOVOS = 30   # notícias novas lidas por execução
 CACHE = Path("cache.json")
 SAIDA = Path("feed.xml")
 FUSO = timezone(timedelta(hours=-3))
-UA = "Mozilla/5.0 (compatible; aneel-rss/1.0)"
+UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+)
+CABECALHOS = {
+    "User-Agent": UA,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.5",
+    "Referer": "https://www.gov.br/aneel/pt-br",
+}
 
 LINK_RE = re.compile(
     r'href="((?:https://www\.gov\.br)?/aneel/pt-br/assuntos/noticias/\d{4}/[^"#?\s]+)"'
@@ -35,10 +44,17 @@ LINK_RE = re.compile(
 DATA_RE = re.compile(r"Publicado em\s*(\d{2})/(\d{2})/(\d{4})\s*(\d{2}):(\d{2})")
 
 
-def baixar(url):
-    req = Request(url, headers={"User-Agent": UA, "Accept-Language": "pt-BR"})
-    with urlopen(req, timeout=30) as r:
-        return r.read().decode("utf-8", "replace")
+def baixar(url, tentativas=4):
+    ultimo_erro = None
+    for n in range(tentativas):
+        try:
+            req = Request(url, headers=CABECALHOS)
+            with urlopen(req, timeout=30) as r:
+                return r.read().decode("utf-8", "replace")
+        except Exception as e:
+            ultimo_erro = e
+            time.sleep(5 * (n + 1))
+    raise ultimo_erro
 
 
 def achar_links(html):
@@ -114,8 +130,10 @@ def main():
 
     if not links:
         sys.exit(
-            "Nenhum link de notícia encontrado no HTML. A listagem provavelmente "
-            "é carregada por JavaScript: ajuste FONTES ou use o endereço da aba Rede."
+            "Nenhum link de notícia obtido. Se houve erro de conexão acima, o site "
+            "provavelmente bloqueia este IP (comum em servidores na nuvem). Se a "
+            "página abriu mas sem links, a listagem é carregada por JavaScript: "
+            "ajuste FONTES ou use o endereço da aba Rede."
         )
 
     novos = [u for u in dict.fromkeys(links) if u not in cache][:MAX_NOVOS]
